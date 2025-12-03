@@ -1,0 +1,34 @@
+export type SlackUser = {
+  id: string;
+  name: string;
+  realName: string;
+  displayName: string;
+  email?: string;
+};
+
+export type SyncUsersResult =
+  | { ok: true; users: SlackUser[]; csvPath: string; logPath: string }
+  | { ok: false; error: string; logPath: string };
+
+export type SendDmsResult = {
+  ok: boolean;
+  sent: number;
+  failed: number;
+  failedUsers: { userId: string; error: string }[];
+};
+
+declare global {
+  interface Window {
+    api: {
+      getUsers: () => Promise<SlackUser[]>;
+      syncUsers: () => Promise<SyncUsersResult>;
+      sendDms: (userIds: string[], text: string) => Promise<SendDmsResult>;
+      getLogPath: () => Promise<string>;
+      onUsersUpdated: (
+        cb: (payload: { users: SlackUser[]; csvPath: string }) => void
+      ) => void;
+    };
+  }
+}
+
+export {};
