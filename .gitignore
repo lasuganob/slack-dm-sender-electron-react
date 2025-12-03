@@ -1,7 +1,9 @@
 # System settings
 .env
+slack_users.csv
 
 # Logs
+slack_dm_sender.log*
 logs
 *.log
 npm-debug.log*

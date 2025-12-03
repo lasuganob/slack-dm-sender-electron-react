@@ -10,7 +10,7 @@
     "build": "vite build && tsc -p electron/tsconfig.electron.json",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win --publish=never"
   },
   "build": {
     "appId": "com.glats.opsdmsender",
@@ -25,11 +25,7 @@
     },
     "win": {
       "target": "nsis"
-    },
-    "mac": {
-      "target": "dmg"
-    },
-    "publish": "never"
+    }
   },
   "dependencies": {
     "@mantine/core": "^8.3.9",
