@@ -9,7 +9,8 @@
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "build": "vite build && tsc -p electron/tsconfig.electron.json",
     "preview": "vite preview",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "build": {
     "appId": "com.glats.opsdmsender",

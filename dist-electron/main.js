@@ -9,14 +9,39 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const web_api_1 = require("@slack/web-api");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
+function getAppRoot() {
+    if (electron_1.app.isPackaged) {
+        return node_path_1.default.dirname(electron_1.app.getPath('exe'));
+    }
+    return process.cwd();
+}
+const appRoot = getAppRoot();
+const configPath = node_path_1.default.join(appRoot, 'config.json');
+function loadConfig() {
+    try {
+        const raw = node_fs_1.default.readFileSync(configPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!parsed.slackBotToken) {
+            throw new Error('slackBotToken missing in config.json');
+        }
+        return { slackBotToken: parsed.slackBotToken };
+    }
+    catch {
+        const fromEnv = process.env.SLACK_BOT_TOKEN;
+        if (!fromEnv) {
+            throw new Error(`Failed to load config.json at ${configPath} and SLACK_BOT_TOKEN env is not set`);
+        }
+        return { slackBotToken: fromEnv };
+    }
+}
 let mainWindow = null;
 let cachedUsers = [];
 let logFilePath;
-const slack = new web_api_1.WebClient(process.env.SLACK_BOT_TOKEN);
+const config = loadConfig();
+const slack = new web_api_1.WebClient(config.slackBotToken);
 // ---------- Logging helpers ----------
 function ensureLogFile() {
-    const userDataDir = electron_1.app.getPath('userData');
-    logFilePath = node_path_1.default.join(userDataDir, 'slack_dm_sender.log');
+    logFilePath = node_path_1.default.join(appRoot, 'slack_dm_sender.log');
     if (!node_fs_1.default.existsSync(logFilePath)) {
         node_fs_1.default.writeFileSync(logFilePath, '', 'utf-8');
     }
@@ -82,8 +107,7 @@ async function syncUsers() {
         }
         cachedUsers = Array.from(map.values());
         const csv = usersToCsv(cachedUsers);
-        const userDataDir = electron_1.app.getPath('userData');
-        const csvPath = node_path_1.default.join(userDataDir, 'slack_users.csv');
+        const csvPath = node_path_1.default.join(appRoot, 'slack_users.csv'); // 👈 same folder as exe
         node_fs_1.default.writeFileSync(csvPath, csv, 'utf-8');
         logEvent('INFO', 'sync_users_success', {
             count: cachedUsers.length,
@@ -98,8 +122,15 @@ async function syncUsers() {
         return { users: cachedUsers, csvPath };
     }
     catch (err) {
+        let errorMsg = 'Unknown error';
+        if (err instanceof Error) {
+            errorMsg = err.message;
+        }
+        else if (typeof err === 'string') {
+            errorMsg = err;
+        }
         logEvent('ERROR', 'sync_users_failed', {
-            error: err?.message ?? String(err),
+            error: errorMsg,
         });
         throw err;
     }
@@ -153,9 +184,16 @@ electron_1.ipcMain.handle('sync-users', async () => {
         return { ok: true, users, csvPath, logPath: logFilePath };
     }
     catch (err) {
+        let errorMsg = 'Failed to sync users from Slack.';
+        if (err instanceof Error) {
+            errorMsg = err.message;
+        }
+        else if (typeof err === 'string') {
+            errorMsg = err;
+        }
         return {
             ok: false,
-            error: err?.message ?? 'Failed to sync users from Slack.',
+            error: errorMsg,
             logPath: logFilePath,
         };
     }
@@ -182,7 +220,13 @@ electron_1.ipcMain.handle('send-dms', async (event, args) => {
                 console.log('[main] send_dm_success', userId);
             }
             catch (err) {
-                const msg = err?.message ?? 'Unknown error sending DM.';
+                let msg = 'Unknown error sending DM.';
+                if (err instanceof Error) {
+                    msg = err.message;
+                }
+                else if (typeof err === 'string') {
+                    msg = err;
+                }
                 logEvent('ERROR', 'send_dm_failed', { userId, error: msg });
                 console.error('[main] send_dm_failed', userId, msg);
                 failedUsers.push({ userId, error: msg });
@@ -207,7 +251,13 @@ electron_1.ipcMain.handle('send-dms', async (event, args) => {
         };
     }
     catch (err) {
-        const msg = err?.message ?? 'send_dms handler crashed unexpectedly.';
+        let msg = 'send_dms handler crashed unexpectedly.';
+        if (err instanceof Error) {
+            msg = err.message;
+        }
+        else if (typeof err === 'string') {
+            msg = err;
+        }
         logEvent('ERROR', 'send_dms_handler_crashed', { error: msg });
         console.error('[main] send_dms_handler_crashed', msg);
         return {
