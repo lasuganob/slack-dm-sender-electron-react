@@ -1,152 +1,182 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from "react";
+import UserSelect from "./components/UserSelect";
+import MessageEditor from "./components/MessageEditor";
+import ConfirmModal from "./components/ConfirmModal";
+import LoadingOverlay from "./components/LoadingOverlay";
 import {
   MantineProvider,
   Container,
   Title,
-  Text,
-  MultiSelect,
-  Textarea,
   Button,
   Group,
   Stack,
-  Badge,
-  Paper,
-  Loader
-} from '@mantine/core';
-import { IconSend, IconRefresh } from '@tabler/icons-react';
-import type {
-  SlackUser,
-  SyncUsersResult,
-  SendDmsResult,
-} from './global';
+  Divider,
+  Text,
+} from "@mantine/core";
+import {
+  IconSend,
+  IconRefresh,
+} from "@tabler/icons-react";
+
+import type { SlackUser, SyncUsersResult, SendDmsResult } from "./global";
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<SlackUser[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [csvPath, setCsvPath] = useState<string | null>(null);
-  const [logPath, setLogPath] = useState<string | null>(null);
 
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [syncingUsers, setSyncingUsers] = useState(false);
   const [sending, setSending] = useState(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+
+  const textareaRef = useRef<HTMLTextAreaElement|null>(null);
 
   const busySync = loadingUsers || syncingUsers;
   const busyAll = busySync || sending;
 
-  // Initial sync
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const id = setInterval(() => {
+      if (Date.now() >= cooldownUntil) {
+        setCooldownUntil(null);
+        setRateLimitMessage(null);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  const handleSyncResult = (result: SyncUsersResult) => {
+    if (result.ok) {
+      setUsers(result.users);
+      return;
+    }
+
+    if (result.rateLimited) {
+      const retrySec = result.retryAfter ?? 30;
+      const until = Date.now() + retrySec * 1000;
+      setCooldownUntil(until);
+      setRateLimitMessage(
+        `Slack rate limit reached for users list. Please wait about ${retrySec} seconds before refreshing again.`
+      );
+      alert(
+        `Slack rate limit reached for users.list.\n\nPlease wait about ${retrySec} seconds before trying again.\n\nDetails have been logged.`
+      );
+    } else {
+      alert(`Failed to sync users: ${result.error}`);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoadingUsers(true);
       try {
         const result: SyncUsersResult = await window.api.syncUsers();
-        if (result.ok) {
-          setUsers(result.users);
-          setCsvPath(result.csvPath);
-          setLogPath(result.logPath);
-        } else {
-          setLogPath(result.logPath);
-          alert(`Failed to sync users: ${result.error}`);
-        }
+        handleSyncResult(result);
       } catch (e: unknown) {
-        let errorMsg = 'Unexpected error syncing users.';
+        let msg = "";
         if (e instanceof Error) {
-          errorMsg = e.message;
-        } else if (typeof e === 'string') {
-          errorMsg = e;
+          msg = e.message;
+        } else {
+          msg = e ? String(e) : "Unknown error";
         }
-        alert(`Unexpected error syncing users: ${errorMsg}`);
+        alert(`Unexpected error syncing users: ${msg}`);
       } finally {
         setLoadingUsers(false);
       }
     };
     init();
 
-    window.api.onUsersUpdated(({ users, csvPath }) => {
+    window.api.onUsersUpdated(({ users }) => {
       setUsers(users);
-      setCsvPath(csvPath);
     });
-
-    window.api.getLogPath().then((lp) => lp && setLogPath(lp));
   }, []);
 
   const handleRefreshUsers = async () => {
+    if (cooldownUntil && Date.now() < cooldownUntil) {
+      const remainingSec = Math.ceil((cooldownUntil - Date.now()) / 1000);
+      alert(
+        `You are temporarily rate limited by Slack.\n\nPlease wait about ${remainingSec} seconds before refreshing again.`
+      );
+      return;
+    }
+
     setSyncingUsers(true);
     try {
       const result: SyncUsersResult = await window.api.syncUsers();
-      if (result.ok) {
-        setUsers(result.users);
-        setCsvPath(result.csvPath);
-        setLogPath(result.logPath);
-      } else {
-        setLogPath(result.logPath);
-        alert(`Failed to sync users: ${result.error}`);
-      }
+      handleSyncResult(result);
     } catch (e: unknown) {
-      let errorMsg = 'Unexpected error syncing users.';
+      let msg = "";
       if (e instanceof Error) {
-        errorMsg = e.message;
-      } else if (typeof e === 'string') {
-        errorMsg = e;
+        msg = e.message;
+      } else {
+        msg = e ? String(e) : "Unknown error";
       }
-      alert(`Unexpected error syncing users: ${errorMsg}`);
+      alert(`Unexpected error syncing users: ${msg}`);
     } finally {
       setSyncingUsers(false);
     }
   };
 
-  const userOptions = users.map((u) => ({
-    value: u.id,
-    label: `${u.displayName || u.realName || u.name}`,
-  }));
-
   const selectedUsers = users.filter((u) => selectedUserIds.includes(u.id));
 
-  const wrapSelection = (wrapper: '*' | '_') => {
+  const formatSelection = (options: { before: string; after?: string }) => {
     const el = textareaRef.current;
     if (!el || busyAll) return;
+
+    const { before, after = before } = options;
 
     const start = el.selectionStart;
     const end = el.selectionEnd;
     const current = message;
 
     if (start === end) {
-      const updated =
-        current.slice(0, start) + wrapper + wrapper + current.slice(end);
-      setMessage(updated);
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + 1, start + 1);
-      });
-    } else {
-      const selectedText = current.slice(start, end);
+      const placeholder = "text";
       const updated =
         current.slice(0, start) +
-        wrapper +
-        selectedText +
-        wrapper +
+        before +
+        placeholder +
+        after +
         current.slice(end);
       setMessage(updated);
+      const cursorPos = start + before.length;
       requestAnimationFrame(() => {
         el.focus();
-        const pos =
-          start + wrapper.length + selectedText.length + wrapper.length;
-        el.setSelectionRange(pos, pos);
+        el.setSelectionRange(cursorPos, cursorPos + placeholder.length);
       });
+      return;
     }
+
+    const selectedText = current.slice(start, end);
+    const wrapped = before + selectedText + after;
+    const updated = current.slice(0, start) + wrapped + current.slice(end);
+    setMessage(updated);
+    requestAnimationFrame(() => {
+      el.focus();
+      const newStart = start + before.length;
+      const newEnd = newStart + selectedText.length;
+      el.setSelectionRange(newStart, newEnd);
+    });
   };
 
+  // ---------- Actions ----------
   const handleOpenConfirm = () => {
+    console.log("[renderer] handleOpenConfirm clicked:", {
+      busyAll,
+      selectedCount: selectedUserIds.length,
+      hasMessage: !!message.trim(),
+    });
+
     if (busyAll) return;
     if (!selectedUserIds.length) {
-      alert('Please select at least one recipient.');
+      alert("Please select at least one recipient.");
       return;
     }
     if (!message.trim()) {
-      alert('Please enter a message.');
+      alert("Please enter a message.");
       return;
     }
 
@@ -154,6 +184,7 @@ const App: React.FC = () => {
   };
 
   const handleSend = async () => {
+    console.log("[renderer] handleSend start");
     setConfirmOpen(false);
     setSending(true);
 
@@ -163,222 +194,98 @@ const App: React.FC = () => {
         message
       );
 
+      console.log("[renderer] sendDms result", res);
+
       if (res.ok) {
         alert(`Message successfully sent to ${res.sent} recipient(s).`);
       } else {
         const failedList = res.failedUsers
           .slice(0, 5)
           .map((f) => `${f.userId}: ${f.error}`)
-          .join('\n');
+          .join("\n");
         alert(
           [
             `Some messages failed to send.`,
             `Sent: ${res.sent}, Failed: ${res.failed}`,
-            failedList ? `Examples:\n${failedList}` : '',
-            logPath ? `\nSee log file for details:\n${logPath}` : '',
+            failedList ? `Examples:\n${failedList}` : "",
           ]
             .filter(Boolean)
-            .join('\n\n')
+            .join("\n\n")
         );
       }
     } catch (e: unknown) {
-      let errorMsg = 'Unexpected error while sending messages.';
+      let msg = "";
       if (e instanceof Error) {
-        errorMsg = e.message;
-      } else if (typeof e === 'string') {
-        errorMsg = e;
+        msg = e.message;
+      } else {
+        msg = e ? String(e) : "Unknown error";
       }
       alert(
-        `${errorMsg}${logPath ? `\n\nCheck the log file:\n${logPath}` : ''}`
+        `Unexpected error while sending messages: ${msg}`
       );
     } finally {
+      console.log("[renderer] handleSend finished, turning off sending");
       setSending(false);
     }
   };
 
+  // ---------- Render ----------
   return (
     <MantineProvider>
-      <Container size="md" py="md">
-        <Title order={2}>Glats Ops Tool - Slack DM</Title>
-        <Button
-          size="xs"
-          variant="light"
-          leftSection={<IconRefresh size={14} />}
-          onClick={handleRefreshUsers}
-          loading={syncingUsers}
-          disabled={sending}
-          mb="sm"
-        >
-          Refresh users from Slack
-        </Button>
-
-        <Stack gap="md">
-          <MultiSelect
-            label="Recipients"
-            placeholder="Select Slack users"
-            data={userOptions}
-            searchable
-            value={selectedUserIds}
-            onChange={setSelectedUserIds}
-            nothingFoundMessage={
-              busySync ? 'Loading users…' : 'No users found'
-            }
-            disabled={busyAll}
-          />
-
-          <Text size="sm">Message:</Text>
-          <Group gap="xs">
+      <Container>
+        <Group justify="space-between" mb="md">
+          <div>
+            <Title order={2}>Slack DM Sender</Title>
+            <Text size="xs" c="red" mt={4}>
+              {rateLimitMessage}
+            </Text>
+          </div>
+          <Stack gap={4} align="flex-end">
             <Button
               size="xs"
               variant="light"
-              onClick={() => wrapSelection('*')}
-              disabled={busyAll}
+              leftSection={<IconRefresh size={14} />}
+              onClick={handleRefreshUsers}
+              loading={syncingUsers}
+              disabled={sending || (!!cooldownUntil && Date.now() < (cooldownUntil ?? 0))}
             >
-              Bold
+              Refresh users from Slack
             </Button>
+          </Stack>
+        </Group>
+        <Stack gap="md">
+          <UserSelect
+            users={users}
+            selectedUserIds={selectedUserIds}
+            setSelectedUserIds={setSelectedUserIds}
+            busy={busyAll}
+          />
+          <Divider size="sm" />
+          <MessageEditor
+            message={message}
+            setMessage={setMessage}
+            busy={busyAll}
+            textareaRef={textareaRef}
+            wrapSelection={(wrapper) => formatSelection({ before: wrapper, after: wrapper })}
+          />
+          <Group justify="flex-end" mt="md">
             <Button
-              size="xs"
-              variant="light"
-              onClick={() => wrapSelection('_')}
+              leftSection={<IconSend size={16} />}
+              onClick={handleOpenConfirm}
               disabled={busyAll}
             >
-              Italic
+              Send
             </Button>
           </Group>
-
-          <Textarea
-            ref={textareaRef}
-            placeholder="Type your message here..."
-            minRows={6}
-            autosize
-            value={message}
-            onChange={(e) => setMessage(e.currentTarget.value)}
-            disabled={busyAll}
-          />
-          <Button
-            leftSection={<IconSend size={16} />}
-            onClick={handleOpenConfirm}
-            disabled={busyAll}
-          >
-            Send
-          </Button>
         </Stack>
-
-        {confirmOpen && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 2000,
-            }}
-          >
-            <Paper
-              shadow="xl"
-              radius="md"
-              p="md"
-              style={{ width: 'min(600px, 90vw)', maxHeight: '80vh', overflowY: 'auto' }}
-            >
-              <Stack>
-                <Group justify="space-between">
-                  <Text fw={600} size="lg">
-                    Confirm send
-                  </Text>
-                  <Button
-                    variant="subtle"
-                    size="xs"
-                    onClick={() => setConfirmOpen(false)}
-                  >
-                    Close
-                  </Button>
-                </Group>
-
-                <div>
-                  <Text fw={500} mb={4}>
-                    Recipients ({selectedUsers.length})
-                  </Text>
-                  <Group gap="xs">
-                    {selectedUsers.map((u) => (
-                      <Badge size="sm">
-                        {u.displayName || u.realName || u.name}{' '}
-                      </Badge>
-                    ))}
-                  </Group>
-                </div>
-
-                <div>
-                  <Text fw={500} mb={4}>
-                    Message
-                  </Text>
-                  <Textarea
-                    minRows={4}
-                    autosize
-                    readOnly
-                    value={message}
-                  />
-                </div>
-
-                <Group justify="flex-end" mt="md">
-                  <Button
-                    variant="default"
-                    onClick={() => setConfirmOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    leftSection={<IconSend size={16} />}
-                    onClick={handleSend}
-                  >
-                    Confirm &amp; Send
-                  </Button>
-                </Group>
-              </Stack>
-            </Paper>
-          </div>
-        )}
-
-        {sending && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 3000,
-            }}
-          >
-            <Paper
-              shadow="xl"
-              radius="md"
-              p="md"
-              style={{ width: 'min(320px, 90vw)', textAlign: 'center' }}
-            >
-              <Stack align="center" gap="sm">
-                <Loader />
-                <Text size="sm">
-                  Sending Slack DMs… Please wait until the process finishes.
-                </Text>
-              </Stack>
-            </Paper>
-          </div>
-        )}
-        <Stack mt="md" mb="xs" gap={4} align="flex-start">
-          {csvPath && (
-            <Text size="xs">
-              <b>Users CSV:</b> <code>{csvPath}</code>
-            </Text>
-          )}
-          {logPath && (
-            <Text size="xs">
-              <b>Log file:</b> <code>{logPath}</code>
-            </Text>
-          )}
-        </Stack>
+        <ConfirmModal
+          open={confirmOpen}
+          onClose={() => setConfirmOpen(false)}
+          onSend={handleSend}
+          selectedUsers={selectedUsers}
+          message={message}
+        />
+        <LoadingOverlay show={sending || busyAll} type={sending ? 'send' : 'sync'} />
       </Container>
     </MantineProvider>
   );

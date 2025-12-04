@@ -1,14 +1,10 @@
 import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { WebClient } from '@slack/web-api';
+import { WebClient, LogLevel } from '@slack/web-api';
 import dotenv from 'dotenv';
 
 dotenv.config();
-
-type AppConfig = {
-  slackBotToken: string;
-};
 
 type SlackUser = {
   id: string;
@@ -17,6 +13,20 @@ type SlackUser = {
   displayName: string;
   email?: string;
 };
+
+type AppConfig = {
+  slackBotToken: string;
+};
+
+let mainWindow: BrowserWindow | null = null;
+let cachedUsers: SlackUser[] = [];
+let logFilePath: string;
+
+let lastSyncAt: number | null = null;
+let syncInFlight: Promise<{ users: SlackUser[]; csvPath: string }> | null = null;
+
+const SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
+// ---------- App root & config ----------
 
 function getAppRoot(): string {
   if (app.isPackaged) {
@@ -36,23 +46,23 @@ function loadConfig(): AppConfig {
       throw new Error('slackBotToken missing in config.json');
     }
     return { slackBotToken: parsed.slackBotToken };
-  } catch {
+  } catch (err: unknown) {
     const fromEnv = process.env.SLACK_BOT_TOKEN;
     if (!fromEnv) {
       throw new Error(
-        `Failed to load config.json at ${configPath} and SLACK_BOT_TOKEN env is not set`
+        `Failed to load config.json at ${configPath} and SLACK_BOT_TOKEN env is not set. 
+        ${err instanceof Error ? err.message : ''}`
       );
     }
     return { slackBotToken: fromEnv };
   }
 }
 
-let mainWindow: BrowserWindow | null = null;
-let cachedUsers: SlackUser[] = [];
-let logFilePath: string;
-
 const config = loadConfig();
-const slack = new WebClient(config.slackBotToken);
+const slack = new WebClient(config.slackBotToken, {
+  retryConfig: { retries: 0 },
+  logLevel: LogLevel.WARN,
+});
 
 // ---------- Logging helpers ----------
 function ensureLogFile() {
@@ -78,13 +88,12 @@ function logEvent(
     logFilePath,
     JSON.stringify(entry) + '\n',
     () => {
-      // ignore write errors
+      // ignore write error
     }
   );
 }
 
 // ---------- Slack + CSV helpers ----------
-
 async function fetchUsersFromSlack(): Promise<SlackUser[]> {
   const users: SlackUser[] = [];
   let cursor: string | undefined;
@@ -107,8 +116,9 @@ async function fetchUsersFromSlack(): Promise<SlackUser[]> {
       }
     }
 
-    const meta = res.response_metadata;
-    cursor = meta?.next_cursor ? meta.next_cursor : undefined;
+    cursor = typeof res.response_metadata?.next_cursor === 'string'
+      ? res.response_metadata.next_cursor
+      : undefined;
   } while (cursor);
 
   return users;
@@ -130,53 +140,75 @@ function usersToCsv(users: SlackUser[]): string {
   return [header, ...rows].join('\n');
 }
 
-async function syncUsers() {
+async function syncUsersCore(): Promise<{ users: SlackUser[]; csvPath: string }> {
   logEvent('INFO', 'sync_users_started');
-  try {
-    const rawUsers = await fetchUsersFromSlack();
+  const rawUsers = await fetchUsersFromSlack();
 
-    const map = new Map<string, SlackUser>();
-    for (const u of rawUsers) {
-      map.set(u.id, u);
-    }
-    cachedUsers = Array.from(map.values());
+  const map = new Map<string, SlackUser>();
+  for (const u of rawUsers) {
+    map.set(u.id, u);
+  }
+  cachedUsers = Array.from(map.values());
 
-    const csv = usersToCsv(cachedUsers);
-    const csvPath = path.join(appRoot, 'slack_users.csv'); // 👈 same folder as exe
-    fs.writeFileSync(csvPath, csv, 'utf-8');
+  const csv = usersToCsv(cachedUsers);
+  const csvPath = path.join(appRoot, 'slack_users.csv');
+  fs.writeFileSync(csvPath, csv, 'utf-8');
 
-    logEvent('INFO', 'sync_users_success', {
-      count: cachedUsers.length,
+  logEvent('INFO', 'sync_users_success', {
+    count: cachedUsers.length,
+    csvPath,
+  });
+
+  if (mainWindow) {
+    mainWindow.webContents.send('users-updated', {
+      users: cachedUsers,
       csvPath,
     });
+  }
 
-    if (mainWindow) {
-      mainWindow.webContents.send('users-updated', {
-        users: cachedUsers,
-        csvPath,
-      });
-    }
+  return { users: cachedUsers, csvPath };
+}
 
+async function syncUsersThrottled(): Promise<{
+  users: SlackUser[];
+  csvPath: string;
+}> {
+  const csvPath = path.join(appRoot, 'slack_users.csv');
+  const now = Date.now();
+
+  if (syncInFlight) {
+    return syncInFlight;
+  }
+
+  if (
+    lastSyncAt &&
+    now - lastSyncAt < SYNC_MIN_INTERVAL_MS &&
+    cachedUsers.length
+  ) {
     return { users: cachedUsers, csvPath };
-  } catch (err: unknown) {
-    let errorMsg = 'Unknown error';
-    if (err instanceof Error) {
-      errorMsg = err.message;
-    } else if (typeof err === 'string') {
-      errorMsg = err;
-    }
-    logEvent('ERROR', 'sync_users_failed', {
-      error: errorMsg,
-    });
-    throw err;
+  }
+
+  syncInFlight = (async () => {
+    const result = await syncUsersCore();
+    lastSyncAt = Date.now();
+    return result;
+  })();
+
+  try {
+    const result = await syncInFlight;
+    return result;
+  } finally {
+    syncInFlight = null;
   }
 }
 
-// ---------- Window & app lifecycle ----------
+// ---------- Window & lifecycle ----------
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 600,
-    height: 600,
+    height: 500,
+    resizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -197,14 +229,8 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   ensureLogFile();
-  logEvent('INFO', 'app_started');
+  logEvent('INFO', 'app_started', { appRoot });
   createWindow();
-
-  try {
-    await syncUsers();
-  } catch {
-    // Already logged; renderer will get errors via IPC when it tries to sync
-  }
 });
 
 app.on('activate', () => {
@@ -212,29 +238,47 @@ app.on('activate', () => {
 });
 
 // ---------- IPC handlers ----------
-
 ipcMain.handle('get-users', async () => {
-  if (!cachedUsers.length) {
-    await syncUsers();
-  }
   return cachedUsers;
 });
 
 ipcMain.handle('sync-users', async () => {
   try {
-    const { users, csvPath } = await syncUsers();
-    return { ok: true, users, csvPath, logPath: logFilePath };
-  } catch (err: unknown) {
-    let errorMsg = 'Failed to sync users from Slack.';
-    if (err instanceof Error) {
-      errorMsg = err.message;
-    } else if (typeof err === 'string') {
-      errorMsg = err;
-    }
+    const { users, csvPath } = await syncUsersThrottled();
     return {
-      ok: false,
-      error: errorMsg,
+      ok: true as const,
+      users,
+      csvPath,
       logPath: logFilePath,
+      rateLimited: false,
+      retryAfter: null,
+    };
+  } catch (err: unknown) {
+    let msg = 'Failed to sync users from Slack.';
+    let slackError: string | undefined | unknown = undefined;
+    let statusCode: string | number | undefined = undefined;
+    let retryAfterSeconds: number | null = null;
+    let isRateLimited = false;
+    if (err && typeof err === 'object') {
+      const e = err as Record<string, unknown>;
+      msg = typeof e.message === 'string' ? e.message : msg;
+      slackError = typeof e.data === 'object' && e.data && typeof (e.data as Record<string, unknown>).error === 'string' ? (e.data as Record<string, unknown>).error : undefined;
+      statusCode = typeof e.statusCode === 'string' || typeof e.statusCode === 'number' ? e.statusCode : (typeof e.code === 'string' ? e.code : undefined);
+      const retryAfterHeader = typeof e.retryAfter === 'number' ? e.retryAfter : (e.data && typeof (e.data as Record<string, unknown>).retry_after === 'number' ? (e.data as Record<string, unknown>).retry_after : (e.headers && typeof (e.headers as Record<string, unknown>)['retry-after'] === 'number' ? (e.headers as Record<string, unknown>)['retry-after'] : null));
+      retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : null;
+      isRateLimited = slackError === 'ratelimited' || statusCode === 429;
+    }
+    logEvent('ERROR', 'sync_users_failed', {
+      error: msg,
+      statusCode,
+      retryAfter: retryAfterSeconds,
+    });
+    return {
+      ok: false as const,
+      error: msg,
+      logPath: logFilePath,
+      rateLimited: isRateLimited,
+      retryAfter: retryAfterSeconds,
     };
   }
 });
@@ -255,7 +299,6 @@ ipcMain.handle(
     logEvent('INFO', 'send_dms_handler_invoked', {
       userCount: userIds.length,
     });
-    console.log('[main] send-dms invoked', { userIdsCount: userIds.length });
 
     const failedUsers: { userId: string; error: string }[] = [];
     let sentCount = 0;
@@ -280,6 +323,8 @@ ipcMain.handle(
             msg = err.message;
           } else if (typeof err === 'string') {
             msg = err;
+          } else if (err && typeof err === 'object' && 'message' in err && typeof (err as Record<string, unknown>).message === 'string') {
+            msg = (err as Record<string, unknown>).message as string;
           }
           logEvent('ERROR', 'send_dm_failed', { userId, error: msg });
           console.error('[main] send_dm_failed', userId, msg);
@@ -312,6 +357,8 @@ ipcMain.handle(
         msg = err.message;
       } else if (typeof err === 'string') {
         msg = err;
+      } else if (err && typeof err === 'object' && 'message' in err && typeof (err as Record<string, unknown>).message === 'string') {
+        msg = (err as Record<string, unknown>).message as string;
       }
       logEvent('ERROR', 'send_dms_handler_crashed', { error: msg });
       console.error('[main] send_dms_handler_crashed', msg);

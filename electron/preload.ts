@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { SlackUser } from '../src/global';
 
 contextBridge.exposeInMainWorld('api', {
   getUsers: () => ipcRenderer.invoke('get-users'),
@@ -7,7 +8,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('send-dms', { userIds, text }),
   getLogPath: () => ipcRenderer.invoke('get-log-path'),
   onUsersUpdated: (
-    callback: (payload: { users: unknown[]; csvPath: string }) => void
+    callback: (payload: { users: SlackUser[]; csvPath: string }) => void
   ) => {
     ipcRenderer.on('users-updated', (_event, payload) => callback(payload));
   },

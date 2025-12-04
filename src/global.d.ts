@@ -7,8 +7,21 @@ export type SlackUser = {
 };
 
 export type SyncUsersResult =
-  | { ok: true; users: SlackUser[]; csvPath: string; logPath: string }
-  | { ok: false; error: string; logPath: string };
+  | {
+      ok: true;
+      users: SlackUser[];
+      csvPath: string;
+      logPath: string;
+      rateLimited: false;
+      retryAfter: null;
+    }
+  | {
+      ok: false;
+      error: string;
+      logPath: string;
+      rateLimited: boolean;
+      retryAfter: number | null;
+    };
 
 export type SendDmsResult = {
   ok: boolean;

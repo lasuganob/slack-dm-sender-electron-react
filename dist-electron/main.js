@@ -9,6 +9,13 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const web_api_1 = require("@slack/web-api");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
+let mainWindow = null;
+let cachedUsers = [];
+let logFilePath;
+let lastSyncAt = null;
+let syncInFlight = null;
+const SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
+// ---------- App root & config ----------
 function getAppRoot() {
     if (electron_1.app.isPackaged) {
         return node_path_1.default.dirname(electron_1.app.getPath('exe'));
@@ -26,19 +33,20 @@ function loadConfig() {
         }
         return { slackBotToken: parsed.slackBotToken };
     }
-    catch {
+    catch (err) {
         const fromEnv = process.env.SLACK_BOT_TOKEN;
         if (!fromEnv) {
-            throw new Error(`Failed to load config.json at ${configPath} and SLACK_BOT_TOKEN env is not set`);
+            throw new Error(`Failed to load config.json at ${configPath} and SLACK_BOT_TOKEN env is not set. 
+        ${err instanceof Error ? err.message : ''}`);
         }
         return { slackBotToken: fromEnv };
     }
 }
-let mainWindow = null;
-let cachedUsers = [];
-let logFilePath;
 const config = loadConfig();
-const slack = new web_api_1.WebClient(config.slackBotToken);
+const slack = new web_api_1.WebClient(config.slackBotToken, {
+    retryConfig: { retries: 0 },
+    logLevel: web_api_1.LogLevel.WARN,
+});
 // ---------- Logging helpers ----------
 function ensureLogFile() {
     logFilePath = node_path_1.default.join(appRoot, 'slack_dm_sender.log');
@@ -56,7 +64,7 @@ function logEvent(level, message, data) {
         ...(data ? { data } : {}),
     };
     node_fs_1.default.appendFile(logFilePath, JSON.stringify(entry) + '\n', () => {
-        // ignore write errors
+        // ignore write error
     });
 }
 // ---------- Slack + CSV helpers ----------
@@ -79,8 +87,9 @@ async function fetchUsersFromSlack() {
                 });
             }
         }
-        const meta = res.response_metadata;
-        cursor = meta?.next_cursor ? meta.next_cursor : undefined;
+        cursor = typeof res.response_metadata?.next_cursor === 'string'
+            ? res.response_metadata.next_cursor
+            : undefined;
     } while (cursor);
     return users;
 }
@@ -97,49 +106,59 @@ function usersToCsv(users) {
         .join(','));
     return [header, ...rows].join('\n');
 }
-async function syncUsers() {
+async function syncUsersCore() {
     logEvent('INFO', 'sync_users_started');
-    try {
-        const rawUsers = await fetchUsersFromSlack();
-        const map = new Map();
-        for (const u of rawUsers) {
-            map.set(u.id, u);
-        }
-        cachedUsers = Array.from(map.values());
-        const csv = usersToCsv(cachedUsers);
-        const csvPath = node_path_1.default.join(appRoot, 'slack_users.csv'); // 👈 same folder as exe
-        node_fs_1.default.writeFileSync(csvPath, csv, 'utf-8');
-        logEvent('INFO', 'sync_users_success', {
-            count: cachedUsers.length,
+    const rawUsers = await fetchUsersFromSlack();
+    const map = new Map();
+    for (const u of rawUsers) {
+        map.set(u.id, u);
+    }
+    cachedUsers = Array.from(map.values());
+    const csv = usersToCsv(cachedUsers);
+    const csvPath = node_path_1.default.join(appRoot, 'slack_users.csv');
+    node_fs_1.default.writeFileSync(csvPath, csv, 'utf-8');
+    logEvent('INFO', 'sync_users_success', {
+        count: cachedUsers.length,
+        csvPath,
+    });
+    if (mainWindow) {
+        mainWindow.webContents.send('users-updated', {
+            users: cachedUsers,
             csvPath,
         });
-        if (mainWindow) {
-            mainWindow.webContents.send('users-updated', {
-                users: cachedUsers,
-                csvPath,
-            });
-        }
+    }
+    return { users: cachedUsers, csvPath };
+}
+async function syncUsersThrottled() {
+    const csvPath = node_path_1.default.join(appRoot, 'slack_users.csv');
+    const now = Date.now();
+    if (syncInFlight) {
+        return syncInFlight;
+    }
+    if (lastSyncAt &&
+        now - lastSyncAt < SYNC_MIN_INTERVAL_MS &&
+        cachedUsers.length) {
         return { users: cachedUsers, csvPath };
     }
-    catch (err) {
-        let errorMsg = 'Unknown error';
-        if (err instanceof Error) {
-            errorMsg = err.message;
-        }
-        else if (typeof err === 'string') {
-            errorMsg = err;
-        }
-        logEvent('ERROR', 'sync_users_failed', {
-            error: errorMsg,
-        });
-        throw err;
+    syncInFlight = (async () => {
+        const result = await syncUsersCore();
+        lastSyncAt = Date.now();
+        return result;
+    })();
+    try {
+        const result = await syncInFlight;
+        return result;
+    }
+    finally {
+        syncInFlight = null;
     }
 }
-// ---------- Window & app lifecycle ----------
+// ---------- Window & lifecycle ----------
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 600,
-        height: 600,
+        height: 500,
+        resizable: false,
         webPreferences: {
             preload: node_path_1.default.join(__dirname, 'preload.js'),
         },
@@ -158,14 +177,8 @@ function createWindow() {
 }
 electron_1.app.whenReady().then(async () => {
     ensureLogFile();
-    logEvent('INFO', 'app_started');
+    logEvent('INFO', 'app_started', { appRoot });
     createWindow();
-    try {
-        await syncUsers();
-    }
-    catch {
-        // Already logged; renderer will get errors via IPC when it tries to sync
-    }
 });
 electron_1.app.on('activate', () => {
     if (electron_1.BrowserWindow.getAllWindows().length === 0)
@@ -173,28 +186,46 @@ electron_1.app.on('activate', () => {
 });
 // ---------- IPC handlers ----------
 electron_1.ipcMain.handle('get-users', async () => {
-    if (!cachedUsers.length) {
-        await syncUsers();
-    }
     return cachedUsers;
 });
 electron_1.ipcMain.handle('sync-users', async () => {
     try {
-        const { users, csvPath } = await syncUsers();
-        return { ok: true, users, csvPath, logPath: logFilePath };
+        const { users, csvPath } = await syncUsersThrottled();
+        return {
+            ok: true,
+            users,
+            csvPath,
+            logPath: logFilePath,
+            rateLimited: false,
+            retryAfter: null,
+        };
     }
     catch (err) {
-        let errorMsg = 'Failed to sync users from Slack.';
-        if (err instanceof Error) {
-            errorMsg = err.message;
+        let msg = 'Failed to sync users from Slack.';
+        let slackError = undefined;
+        let statusCode = undefined;
+        let retryAfterSeconds = null;
+        let isRateLimited = false;
+        if (err && typeof err === 'object') {
+            const e = err;
+            msg = typeof e.message === 'string' ? e.message : msg;
+            slackError = typeof e.data === 'object' && e.data && typeof e.data.error === 'string' ? e.data.error : undefined;
+            statusCode = typeof e.statusCode === 'string' || typeof e.statusCode === 'number' ? e.statusCode : (typeof e.code === 'string' ? e.code : undefined);
+            const retryAfterHeader = typeof e.retryAfter === 'number' ? e.retryAfter : (e.data && typeof e.data.retry_after === 'number' ? e.data.retry_after : (e.headers && typeof e.headers['retry-after'] === 'number' ? e.headers['retry-after'] : null));
+            retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : null;
+            isRateLimited = slackError === 'ratelimited' || statusCode === 429;
         }
-        else if (typeof err === 'string') {
-            errorMsg = err;
-        }
+        logEvent('ERROR', 'sync_users_failed', {
+            error: msg,
+            statusCode,
+            retryAfter: retryAfterSeconds,
+        });
         return {
             ok: false,
-            error: errorMsg,
+            error: msg,
             logPath: logFilePath,
+            rateLimited: isRateLimited,
+            retryAfter: retryAfterSeconds,
         };
     }
 });
@@ -203,7 +234,6 @@ electron_1.ipcMain.handle('send-dms', async (event, args) => {
     logEvent('INFO', 'send_dms_handler_invoked', {
         userCount: userIds.length,
     });
-    console.log('[main] send-dms invoked', { userIdsCount: userIds.length });
     const failedUsers = [];
     let sentCount = 0;
     try {
@@ -226,6 +256,9 @@ electron_1.ipcMain.handle('send-dms', async (event, args) => {
                 }
                 else if (typeof err === 'string') {
                     msg = err;
+                }
+                else if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+                    msg = err.message;
                 }
                 logEvent('ERROR', 'send_dm_failed', { userId, error: msg });
                 console.error('[main] send_dm_failed', userId, msg);
@@ -257,6 +290,9 @@ electron_1.ipcMain.handle('send-dms', async (event, args) => {
         }
         else if (typeof err === 'string') {
             msg = err;
+        }
+        else if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+            msg = err.message;
         }
         logEvent('ERROR', 'send_dms_handler_crashed', { error: msg });
         console.error('[main] send_dms_handler_crashed', msg);
