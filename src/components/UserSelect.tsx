@@ -17,7 +17,7 @@ const UserSelect: React.FC<UserSelectProps> = ({
 }) => {
   const userOptions = users.map((u) => ({
     value: u.id,
-    label: `${u.displayName || u.realName || u.name}`,
+    label: `${u.slackName || u.glatsName}`,
   }));
 
   return (

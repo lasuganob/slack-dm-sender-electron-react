@@ -1,5 +1,6 @@
 {
   "name": "glats-ops-dm-sender",
+  "productName": "Glats Ops DM Sender",
   "private": true,
   "version": "0.0.1",
   "main": "dist-electron/main.js",
@@ -24,7 +25,12 @@
       "buildResources": "build"
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
     }
   },
   "dependencies": {

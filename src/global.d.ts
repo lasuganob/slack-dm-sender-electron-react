@@ -1,9 +1,9 @@
 export type SlackUser = {
   id: string;
-  name: string;
-  realName: string;
-  displayName: string;
+  username: string;
+  slackName: string;
   email?: string;
+  glatsName?: string;
 };
 
 export type SyncUsersResult =
@@ -35,8 +35,14 @@ declare global {
     api: {
       getUsers: () => Promise<SlackUser[]>;
       syncUsers: () => Promise<SyncUsersResult>;
-      sendDms: (userIds: string[], text: string) => Promise<SendDmsResult>;
+      sendDms: (
+        userIds: string[],
+        text: string,
+        attachmentsDir: string | null
+      ) => Promise<SendDmsResult>;
       getLogPath: () => Promise<string>;
+      chooseAttachmentsDir: () => Promise<string | null>;
+      openCsv: () => Promise<boolean>; 
       onUsersUpdated: (
         cb: (payload: { users: SlackUser[]; csvPath: string }) => void
       ) => void;

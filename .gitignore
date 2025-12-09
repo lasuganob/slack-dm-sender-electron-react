@@ -1,5 +1,6 @@
 # System settings
 .env
+config.json
 slack_users.csv
 
 # Logs

@@ -4,6 +4,7 @@ import MessageEditor from "./components/MessageEditor";
 import ConfirmModal from "./components/ConfirmModal";
 import LoadingOverlay from "./components/LoadingOverlay";
 import {
+  Anchor,
   MantineProvider,
   Container,
   Title,
@@ -12,6 +13,7 @@ import {
   Stack,
   Divider,
   Text,
+  Paper,
 } from "@mantine/core";
 import {
   IconSend,
@@ -25,6 +27,7 @@ const App: React.FC = () => {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [attachmentsDir, setAttachmentsDir] = useState<string | null>(null);
 
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [syncingUsers, setSyncingUsers] = useState(false);
@@ -121,6 +124,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleChooseAttachmentsDir = async () => {
+    const dir = await window.api.chooseAttachmentsDir();
+    if (dir)
+      setAttachmentsDir(dir);
+  }
+
   const selectedUsers = users.filter((u) => selectedUserIds.includes(u.id));
 
   const formatSelection = (options: { before: string; after?: string }) => {
@@ -164,12 +173,6 @@ const App: React.FC = () => {
 
   // ---------- Actions ----------
   const handleOpenConfirm = () => {
-    console.log("[renderer] handleOpenConfirm clicked:", {
-      busyAll,
-      selectedCount: selectedUserIds.length,
-      hasMessage: !!message.trim(),
-    });
-
     if (busyAll) return;
     if (!selectedUserIds.length) {
       alert("Please select at least one recipient.");
@@ -179,22 +182,19 @@ const App: React.FC = () => {
       alert("Please enter a message.");
       return;
     }
-
     setConfirmOpen(true);
   };
 
   const handleSend = async () => {
-    console.log("[renderer] handleSend start");
     setConfirmOpen(false);
     setSending(true);
 
     try {
       const res: SendDmsResult = await window.api.sendDms(
         selectedUserIds,
-        message
+        message,
+        attachmentsDir
       );
-
-      console.log("[renderer] sendDms result", res);
 
       if (res.ok) {
         alert(`Message successfully sent to ${res.sent} recipient(s).`);
@@ -224,8 +224,23 @@ const App: React.FC = () => {
         `Unexpected error while sending messages: ${msg}`
       );
     } finally {
-      console.log("[renderer] handleSend finished, turning off sending");
       setSending(false);
+    }
+  };
+
+  const handleOpenCsv = async () => {
+    try {
+      await window.api.openCsv();
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        alert(
+          `Failed to open slack_users.csv: ${
+            e.message
+          }\n\nPlease open it manually from the app folder if needed.`
+        );
+        return;
+      }
+      return alert("Failed to open slack_users.csv for unknown reason.");
     }
   };
 
@@ -268,6 +283,28 @@ const App: React.FC = () => {
             textareaRef={textareaRef}
             wrapSelection={(wrapper) => formatSelection({ before: wrapper, after: wrapper })}
           />
+          <Paper withBorder p="sm">
+            <Group justify="space-between" align="flex-start">
+              <div>
+                <Text fw={500}>Attachment folder <small>(Optional)</small></Text>
+                <Text size="xs" c="dimmed">
+                  Each selected user must have a PDF named after their Glats Name. {' '}
+                  <Anchor onClick={handleOpenCsv}>Show List</Anchor>
+                </Text>
+                <Text size="xs" mt={6}>
+                  Current folder: <i>{attachmentsDir ?? "None selected"}</i>
+                </Text>
+              </div>
+              <Button
+                size="xs"
+                variant="light"
+                onClick={handleChooseAttachmentsDir}
+                disabled={busyAll}
+              >
+                Choose folder…
+              </Button>
+            </Group>
+          </Paper>
           <Group justify="flex-end" mt="md">
             <Button
               leftSection={<IconSend size={16} />}
@@ -284,6 +321,7 @@ const App: React.FC = () => {
           onSend={handleSend}
           selectedUsers={selectedUsers}
           message={message}
+          attachmentsDir={attachmentsDir}
         />
         <LoadingOverlay show={sending || busyAll} type={sending ? 'send' : 'sync'} />
       </Container>

@@ -17,6 +17,7 @@ interface ConfirmModalProps {
   onSend: () => void;
   selectedUsers: SlackUser[];
   message: string;
+  attachmentsDir: string | null;
 }
 
 const ConfirmModal: React.FC<ConfirmModalProps> = ({
@@ -25,6 +26,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onSend,
   selectedUsers,
   message,
+  attachmentsDir,
 }) => {
   if (!open) return null;
   return (
@@ -60,7 +62,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <Group gap="xs">
               {selectedUsers.map((u) => (
                 <Badge size="sm" key={u.id}>
-                  {u.displayName || u.realName || u.name}{" "}
+                  {u.glatsName}{" "}
                 </Badge>
               ))}
             </Group>
@@ -79,6 +81,11 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               Confirm &amp; Send
             </Button>
           </Group>
+          <Text size="sm" c="dimmed">
+            {attachmentsDir
+              ? `Attachments Directory: ${attachmentsDir}`
+              : "No attachments directory selected."}
+          </Text>
         </Stack>
       </Paper>
     </div>

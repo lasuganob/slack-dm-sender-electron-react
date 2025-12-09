@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - feature/attachment
 
 jobs:
   build-windows:
@@ -28,19 +28,27 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
-          echo "{\"slackBotToken\":\"$SLACK_BOT_TOKEN\"}" > config.json
+          cat <<EOF > config.json
+          {
+            "slackBotToken": "${SLACK_BOT_TOKEN}",
+            "sendOnlyToWfhIspUsers": true,
+            "exceptionUserIds": ["U05Q9EDGM6Z", "UC61T7TE2", "U09A58SEJLR"]
+          }
+          EOF
+
           echo "Created config.json:"
           cat config.json
 
-      - name: Build & package (Windows)
+      - name: Build & package (Windows portable)
         env:
-          # not strictly needed anymore, but harmless:
+          # Not strictly needed for config.json anymore, but harmless
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CI: true
         run: npm run dist:win
 
-      - name: Upload Windows artifacts
+      - name: Upload Windows portable exe
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
+          name: windows-portable
           path: dist/*.exe
           if-no-files-found: error
