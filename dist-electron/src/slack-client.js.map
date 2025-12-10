@@ -1,0 +1,1 @@
+{"version":3,"file":"slack-client.js","sourceRoot":"","sources":["../../electron/src/slack-client.ts"],"names":[],"mappings":";;;AAAA,4CAAqD;AACrD,qCAAkC;AAErB,QAAA,KAAK,GAAG,IAAI,mBAAS,CAAC,eAAM,CAAC,aAAa,EAAE;IACvD,WAAW,EAAE,EAAE,OAAO,EAAE,CAAC,EAAE;IAC3B,QAAQ,EAAE,kBAAQ,CAAC,IAAI;CACxB,CAAC,CAAC"}
