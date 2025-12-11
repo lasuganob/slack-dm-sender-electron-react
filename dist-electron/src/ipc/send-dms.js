@@ -29,7 +29,7 @@ async function sendDms(args) {
             }
             let filePath = null;
             if (attachmentsDir) {
-                const expected = node_path_1.default.join(attachmentsDir, `${user.glatsName}.pdf`);
+                const expected = node_path_1.default.join(attachmentsDir, `${user.glatsName || user.slackName}.pdf`);
                 if (node_fs_1.default.existsSync(expected)) {
                     filePath = expected;
                 }

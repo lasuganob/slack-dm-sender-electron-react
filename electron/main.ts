@@ -11,6 +11,7 @@ import { handleSyncUsers } from "./src/ipc/sync-users-handler";
 import { chooseAttachmentsDirectory } from "./src/ipc/choose-attachments-dir";
 import { sendDms } from "./src/ipc/send-dms";
 import { openCsv } from "./src/ipc/open-csv";
+import { reloadUsersFromCsv } from "./src/ipc/reload-users-from-csv";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -28,7 +29,7 @@ setUsersUpdatedHandler(({ users, csvPath }) => {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 600,
-    height: 620,
+    height: 700,
     resizable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -63,8 +64,8 @@ ipcMain.handle("get-users", async () => {
   return getCachedUsers();
 });
 
-ipcMain.handle("sync-users", async () => {
-  return handleSyncUsers();
+ipcMain.handle("sync-users", async (_event, manual?: boolean) => {
+  return handleSyncUsers(manual === true);
 });
 
 ipcMain.handle("choose-attachments-dir", async () => {
@@ -81,4 +82,8 @@ ipcMain.handle("get-log-path", async () => {
 
 ipcMain.handle("open-csv", async () => {
   return openCsv();
+});
+
+ipcMain.handle("reload-users-from-csv", async () => {
+  return reloadUsersFromCsv();
 });

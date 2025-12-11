@@ -9,9 +9,10 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const app_root_1 = require("../app-root");
 const slack_users_1 = require("./slack-users");
 const logger_1 = require("./logger");
-async function handleSyncUsers() {
+async function handleSyncUsers(manual) {
+    console.log("handleSyncUsers called with manual =", manual);
     try {
-        const { users, csvPath } = await (0, slack_users_1.syncUsersThrottled)();
+        const { users, csvPath } = manual ? await (0, slack_users_1.syncUsersCore)() : await (0, slack_users_1.syncUsersThrottled)();
         return {
             ok: true,
             users,

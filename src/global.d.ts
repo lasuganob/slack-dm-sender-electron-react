@@ -34,7 +34,7 @@ declare global {
   interface Window {
     api: {
       getUsers: () => Promise<SlackUser[]>;
-      syncUsers: () => Promise<SyncUsersResult>;
+      syncUsers: (manual?: boolean) => Promise<SyncUsersResult>;
       sendDms: (
         userIds: string[],
         text: string,
@@ -43,6 +43,7 @@ declare global {
       getLogPath: () => Promise<string>;
       chooseAttachmentsDir: () => Promise<string | null>;
       openCsv: () => Promise<boolean>; 
+      reloadUsersFromCsv: () => Promise<SyncUsersResult>;
       onUsersUpdated: (
         cb: (payload: { users: SlackUser[]; csvPath: string }) => void
       ) => void;

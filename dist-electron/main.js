@@ -12,6 +12,7 @@ const sync_users_handler_1 = require("./src/ipc/sync-users-handler");
 const choose_attachments_dir_1 = require("./src/ipc/choose-attachments-dir");
 const send_dms_1 = require("./src/ipc/send-dms");
 const open_csv_1 = require("./src/ipc/open-csv");
+const reload_users_from_csv_1 = require("./src/ipc/reload-users-from-csv");
 let mainWindow = null;
 // Notify renderer when users are updated (from slack-users module)
 (0, slack_users_1.setUsersUpdatedHandler)(({ users, csvPath }) => {
@@ -26,7 +27,7 @@ let mainWindow = null;
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 600,
-        height: 620,
+        height: 700,
         resizable: false,
         webPreferences: {
             preload: node_path_1.default.join(__dirname, "preload.js"),
@@ -57,8 +58,8 @@ electron_1.app.on("activate", () => {
 electron_1.ipcMain.handle("get-users", async () => {
     return (0, slack_users_1.getCachedUsers)();
 });
-electron_1.ipcMain.handle("sync-users", async () => {
-    return (0, sync_users_handler_1.handleSyncUsers)();
+electron_1.ipcMain.handle("sync-users", async (_event, manual) => {
+    return (0, sync_users_handler_1.handleSyncUsers)(manual === true);
 });
 electron_1.ipcMain.handle("choose-attachments-dir", async () => {
     return (0, choose_attachments_dir_1.chooseAttachmentsDirectory)();
@@ -71,5 +72,8 @@ electron_1.ipcMain.handle("get-log-path", async () => {
 });
 electron_1.ipcMain.handle("open-csv", async () => {
     return (0, open_csv_1.openCsv)();
+});
+electron_1.ipcMain.handle("reload-users-from-csv", async () => {
+    return (0, reload_users_from_csv_1.reloadUsersFromCsv)();
 });
 //# sourceMappingURL=main.js.map

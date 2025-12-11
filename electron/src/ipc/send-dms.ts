@@ -43,7 +43,7 @@ export async function sendDms(args: SendDmsArgs): Promise<SendDmsResult> {
 
       let filePath: string | null = null;
       if (attachmentsDir) {
-        const expected = path.join(attachmentsDir, `${user.glatsName}.pdf`);
+        const expected = path.join(attachmentsDir, `${user.glatsName || user.slackName}.pdf`);
         if (fs.existsSync(expected)) {
           filePath = expected;
         } else {

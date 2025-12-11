@@ -5,6 +5,7 @@ import { appRoot } from "../app-root";
 import {
   syncUsersThrottled,
   hydrateCachedUsersFromCsv,
+  syncUsersCore,
 } from "./slack-users";
 import { logEvent, getLogFilePath } from "./logger";
 import { SlackUser } from "../type";
@@ -30,9 +31,10 @@ export type SyncUsersResponse =
   | SyncUsersSuccessResponse
   | SyncUsersErrorResponse;
 
-export async function handleSyncUsers(): Promise<SyncUsersResponse> {
+export async function handleSyncUsers(manual?: boolean): Promise<SyncUsersResponse> {
+  console.log("handleSyncUsers called with manual =", manual);
   try {
-    const { users, csvPath } = await syncUsersThrottled();
+    const { users, csvPath } = manual ? await syncUsersCore() : await syncUsersThrottled();
     return {
       ok: true as const,
       users,

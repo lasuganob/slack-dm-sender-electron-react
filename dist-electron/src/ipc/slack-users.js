@@ -36,11 +36,9 @@ async function fetchUsersFromSlack() {
                 if (!m || m.deleted || m.is_bot || m.id === "USLACKBOT")
                     continue;
                 const profile = m.profile ?? {};
-                const displayName = profile.display_name || "";
-                const slackName = profile.display_name || profile.real_name || "";
-                const displayNameLower = displayName.toLowerCase();
-                const hasWfhOrIsp = /\bWFH\b/i.test(displayNameLower) ||
-                    /\bISP\b/i.test(displayNameLower);
+                const slackName = profile.display_name || profile.real_name || m.name || "";
+                const slackNameLower = slackName.toLowerCase();
+                const hasWfhOrIsp = /\bWFH\b/i.test(slackNameLower) || /\bISP\b/i.test(slackNameLower);
                 const exceptionIds = config_1.config.exceptionUserIds || [];
                 if (!hasWfhOrIsp &&
                     sendOnlyToWfhIspUsers &&
