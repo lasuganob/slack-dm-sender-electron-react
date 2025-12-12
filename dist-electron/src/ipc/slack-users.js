@@ -15,7 +15,7 @@ const config_1 = require("../config");
 const csv_helper_1 = require("../csv-helper");
 const slack_client_1 = require("../slack-client");
 const logger_1 = require("./logger");
-const SYNC_MIN_INTERVAL_MS = 60 * 60 * 1000;
+const SYNC_MIN_INTERVAL_MS = 30 * 60 * 1000;
 let cachedUsers = [];
 let syncInFlight = null;
 let usersUpdatedHandler = null;
@@ -70,8 +70,8 @@ async function syncUsersCore() {
         ...u,
         glatsName: existingGlats.get(u.id) ?? "",
     }));
-    cachedUsers = merged;
-    const csv = (0, csv_helper_1.usersToCsv)(merged);
+    cachedUsers = sortUsersAlphabetically(merged);
+    const csv = (0, csv_helper_1.usersToCsv)(cachedUsers);
     node_fs_1.default.writeFileSync(csvPath, csv, "utf-8");
     (0, logger_1.logEvent)("INFO", "sync_users_success", {
         count: cachedUsers.length,
@@ -117,5 +117,12 @@ async function syncUsersThrottled() {
     finally {
         syncInFlight = null;
     }
+}
+function sortUsersAlphabetically(users) {
+    return [...users].sort((a, b) => {
+        const nameA = (a.glatsName || a.slackName || a.username || "").toLocaleLowerCase();
+        const nameB = (b.glatsName || b.slackName || b.username || "").toLocaleLowerCase();
+        return nameA.localeCompare(nameB);
+    });
 }
 //# sourceMappingURL=slack-users.js.map

@@ -12,7 +12,7 @@ import { slack } from "../slack-client";
 import { SlackUser } from "../type";
 import { logEvent } from "./logger";
 
-const SYNC_MIN_INTERVAL_MS = 60 * 60 * 1000;
+const SYNC_MIN_INTERVAL_MS = 30 * 60 * 1000;
 
 let cachedUsers: SlackUser[] = [];
 let syncInFlight: Promise<{ users: SlackUser[]; csvPath: string }> | null =
@@ -96,9 +96,9 @@ export async function syncUsersCore(): Promise<{
     glatsName: existingGlats.get(u.id) ?? "",
   }));
 
-  cachedUsers = merged;
+  cachedUsers = sortUsersAlphabetically(merged);
 
-  const csv = usersToCsv(merged);
+  const csv = usersToCsv(cachedUsers);
   fs.writeFileSync(csvPath, csv, "utf-8");
 
   logEvent("INFO", "sync_users_success", {
@@ -156,4 +156,12 @@ export async function syncUsersThrottled(): Promise<{
   } finally {
     syncInFlight = null;
   }
+}
+
+function sortUsersAlphabetically(users: SlackUser[]): SlackUser[] {
+  return [...users].sort((a, b) => {
+    const nameA = (a.glatsName || a.slackName || a.username || "").toLocaleLowerCase();
+    const nameB = (b.glatsName || b.slackName || b.username || "").toLocaleLowerCase();
+    return nameA.localeCompare(nameB);
+  });
 }
