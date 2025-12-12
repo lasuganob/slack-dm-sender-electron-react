@@ -1,16 +1,16 @@
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 
-import { SlackUser } from "../type";
-import { config } from "../config";
-import { slack } from "../slack-client";
 import { appRoot } from "../app-root";
-import { logEvent } from "./logger";
+import { config } from "../config";
 import {
   loadExistingGlatsNames,
   loadUsersFromCsv,
   usersToCsv,
 } from "../csv-helper";
+import { slack } from "../slack-client";
+import { SlackUser } from "../type";
+import { logEvent } from "./logger";
 
 const SYNC_MIN_INTERVAL_MS = 60 * 60 * 1000;
 

@@ -1,6 +1,6 @@
-import path from "node:path";
-import fs from "node:fs";
 import { shell } from "electron";
+import fs from "node:fs";
+import path from "node:path";
 
 import { appRoot } from "../app-root";
 import { logEvent } from "./logger";

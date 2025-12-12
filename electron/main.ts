@@ -1,17 +1,17 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 
-import { ensureLogFile, logEvent, getLogFilePath } from "./src/ipc/logger";
 import { appRoot } from "./src/app-root";
+import { chooseAttachmentsDirectory } from "./src/ipc/choose-attachments-dir";
+import { ensureLogFile, getLogFilePath, logEvent } from "./src/ipc/logger";
+import { openCsv } from "./src/ipc/open-csv";
+import { reloadUsersFromCsv } from "./src/ipc/reload-users-from-csv";
+import { sendDms } from "./src/ipc/send-dms";
 import {
   getCachedUsers,
   setUsersUpdatedHandler,
 } from "./src/ipc/slack-users";
 import { handleSyncUsers } from "./src/ipc/sync-users-handler";
-import { chooseAttachmentsDirectory } from "./src/ipc/choose-attachments-dir";
-import { sendDms } from "./src/ipc/send-dms";
-import { openCsv } from "./src/ipc/open-csv";
-import { reloadUsersFromCsv } from "./src/ipc/reload-users-from-csv";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -29,8 +29,9 @@ setUsersUpdatedHandler(({ users, csvPath }) => {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 600,
-    height: 700,
+    height: 620,
     resizable: false,
+    icon: path.join(appRoot, "public", "favicon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
@@ -64,8 +65,8 @@ ipcMain.handle("get-users", async () => {
   return getCachedUsers();
 });
 
-ipcMain.handle("sync-users", async (_event, manual?: boolean) => {
-  return handleSyncUsers(manual === true);
+ipcMain.handle("sync-users", async () => {
+  return handleSyncUsers();
 });
 
 ipcMain.handle("choose-attachments-dir", async () => {

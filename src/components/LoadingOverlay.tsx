@@ -1,5 +1,5 @@
+import { Loader, Paper, Stack, Text } from "@mantine/core";
 import React from "react";
-import { Paper, Stack, Loader, Text } from "@mantine/core";
 
 interface LoadingOverlayProps {
   show: boolean;

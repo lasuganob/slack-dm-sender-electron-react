@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { appRoot } from "../app-root";
-import { hydrateCachedUsersFromCsv, getCachedUsers } from "./slack-users";
-import { logEvent, getLogFilePath } from "./logger";
+import { getLogFilePath, logEvent } from "./logger";
+import { getCachedUsers, hydrateCachedUsersFromCsv } from "./slack-users";
 
 export function reloadUsersFromCsv() {
     const csvPath = path.join(appRoot, "slack_users.csv");

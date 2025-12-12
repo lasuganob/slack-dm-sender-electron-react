@@ -1,14 +1,14 @@
-import React from "react";
 import {
+  Badge,
+  Button,
+  Group,
   Paper,
   Stack,
-  Group,
   Text,
-  Button,
-  Badge,
   Textarea,
 } from "@mantine/core";
 import { IconSend } from "@tabler/icons-react";
+import React from "react";
 import type { SlackUser } from "../global";
 
 interface ConfirmModalProps {
@@ -55,6 +55,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <Text fw={600} size="lg">
             Confirm send
           </Text>
+          {attachmentsDir && (
+            <Paper withBorder shadow="xs" p="xs">
+              <Text size="xs">
+                <b>Note:</b> Each selected user must have a PDF named after
+                their Glats name.
+              </Text>
+            </Paper>
+          )}
           <div>
             <Text fw={500} mb={4}>
               Recipients ({selectedUsers.length})
@@ -62,7 +70,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <Group gap="xs">
               {selectedUsers.map((u) => (
                 <Badge size="sm" key={u.id}>
-                  {u.glatsName}{" "}
+                  {u.glatsName || u.slackName}{" "}
                 </Badge>
               ))}
             </Group>
@@ -81,10 +89,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               Confirm &amp; Send
             </Button>
           </Group>
-          <Text size="sm" c="dimmed">
-            {attachmentsDir
-              ? `Attachments Directory: ${attachmentsDir}`
-              : "No attachments directory selected."}
+          <Text size="xs" c="dimmed">
+            {attachmentsDir ? (
+              <span>
+                <b>Attachments Directory:</b> {attachmentsDir}
+              </span>
+            ) : (
+              <span>No attachments directory selected.</span>
+            )}
           </Text>
         </Stack>
       </Paper>

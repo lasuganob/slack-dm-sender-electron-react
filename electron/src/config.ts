@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import dotenv from "dotenv";
-import { AppConfig } from "./type";
+import fs from "node:fs";
 import { configPath } from "./app-root";
+import { AppConfig } from "./type";
 
 dotenv.config();
 

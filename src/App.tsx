@@ -1,24 +1,23 @@
-import React, { useEffect, useState, useRef } from "react";
-import UserSelect from "./components/UserSelect";
-import MessageEditor from "./components/MessageEditor";
-import ConfirmModal from "./components/ConfirmModal";
-import LoadingOverlay from "./components/LoadingOverlay";
-import UserListHelpModal from "./components/UserListHelpModal";
 import {
   Anchor,
-  MantineProvider,
-  Container,
-  Title,
   Button,
-  Group,
-  Stack,
+  Container,
   Divider,
-  Text,
+  Group,
+  MantineProvider,
   Paper,
+  Stack,
+  Text,
+  Title,
 } from "@mantine/core";
-import { IconSend, IconRefresh, IconHelpCircle } from "@tabler/icons-react";
+import { IconRefresh, IconSend } from "@tabler/icons-react";
+import React, { useEffect, useRef, useState } from "react";
+import ConfirmModal from "./components/ConfirmModal";
+import LoadingOverlay from "./components/LoadingOverlay";
+import MessageEditor from "./components/MessageEditor";
+import UserSelect from "./components/UserSelect";
 
-import type { SlackUser, SyncUsersResult, SendDmsResult } from "./global";
+import type { SendDmsResult, SlackUser, SyncUsersResult } from "./global";
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<SlackUser[]>([]);
@@ -26,25 +25,17 @@ const App: React.FC = () => {
   const [message, setMessage] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [attachmentsDir, setAttachmentsDir] = useState<string | null>(null);
-  const [userListHelpOpen, setUserListHelpOpen] = useState(false);
 
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [syncingUsers, setSyncingUsers] = useState(false);
   const [sending, setSending] = useState(false);
 
-  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
-  const [remainingCooldownSec, setRemainingCooldownSec] = useState<
-    number | null
-  >(null);
-
-  const REFRESH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const busySync = loadingUsers || syncingUsers;
   const busyAll = busySync || sending;
-  const cooldownActive = cooldownUntil !== null;
 
   const handleSyncResult = (result: SyncUsersResult) => {
     if (result.ok) {
@@ -64,30 +55,6 @@ const App: React.FC = () => {
       alert(`Failed to sync users: ${result.error}`);
     }
   };
-
-  useEffect(() => {
-    if (!cooldownUntil) {
-      setRemainingCooldownSec(null);
-      return;
-    }
-
-    const update = () => {
-      const diffMs = cooldownUntil - Date.now();
-      if (diffMs <= 0) {
-        // Cooldown finished
-        setCooldownUntil(null);
-        setRateLimitMessage(null); // optional
-        setRemainingCooldownSec(null);
-      } else {
-        setRemainingCooldownSec(Math.ceil(diffMs / 1000));
-      }
-    };
-
-    update();
-
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [cooldownUntil]);
 
   useEffect(() => {
     const init = async () => {
@@ -113,36 +80,6 @@ const App: React.FC = () => {
       setUsers(users);
     });
   }, []);
-
-  const handleRefreshUsers = async () => {
-    if (cooldownUntil && Date.now() < cooldownUntil) {
-      const remainingSec = Math.ceil((cooldownUntil - Date.now()) / 1000);
-      alert(
-        `You are temporarily rate limited by Slack.\n\nPlease wait about ${remainingSec} seconds before refreshing again.`
-      );
-      return;
-    }
-
-    setSyncingUsers(true);
-    try {
-      const result: SyncUsersResult = await window.api.syncUsers(true);
-      handleSyncResult(result);
-
-      if (result.ok) {
-        setCooldownUntil(Date.now() + REFRESH_COOLDOWN_MS);
-      }
-    } catch (e: unknown) {
-      let msg = "";
-      if (e instanceof Error) {
-        msg = e.message;
-      } else {
-        msg = e ? String(e) : "Unknown error";
-      }
-      alert(`Unexpected error syncing users: ${msg}`);
-    } finally {
-      setSyncingUsers(false);
-    }
-  };
 
   const handleChooseAttachmentsDir = async () => {
     const dir = await window.api.chooseAttachmentsDir();
@@ -277,27 +214,18 @@ const App: React.FC = () => {
     }
   };
 
-  const formatSeconds = (totalSeconds: number): string => {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  };
-
   // ---------- Render ----------
   return (
     <MantineProvider>
       <Container>
         <Group justify="space-between" mb="md">
-          <div>
+          <>
             <Title order={2}>Slack DM Sender</Title>
             <Text size="xs" c="red" mt={4}>
               {rateLimitMessage}
             </Text>
-          </div>
-        </Group>
-        <Paper withBorder p="sm" mb="md">
-          <Group align="flex-start">
-            <Button
+          </>
+          <Button
               size="xs"
               variant="light"
               leftSection={<IconRefresh size={14} />}
@@ -305,33 +233,9 @@ const App: React.FC = () => {
               loading={syncingUsers}
               disabled={sending || busyAll}
             >
-              Refresh users from CSV
-            </Button>
-
-            <Button
-              size="xs"
-              variant="light"
-              leftSection={<IconRefresh size={14} />}
-              onClick={handleRefreshUsers}
-              loading={syncingUsers}
-              disabled={sending || busyAll || cooldownActive}
-            >
-              {cooldownActive && remainingCooldownSec !== null
-                ? `Refresh users (${formatSeconds(remainingCooldownSec)})`
-                : "Refresh users from Slack"}
-            </Button>
-
-            <Button
-              size="xs"
-              variant="subtle"
-              onClick={() => setUserListHelpOpen(true)}
-              title="What do these buttons do?"
-            >
-              <IconHelpCircle size={14} style={{ marginRight: 4 }} />
-              Help
-            </Button>
-          </Group>
-        </Paper>
+              Refresh Users
+          </Button>
+        </Group>
         <Stack gap="md">
           <UserSelect
             users={users}
@@ -343,7 +247,7 @@ const App: React.FC = () => {
           <MessageEditor
             message={message}
             setMessage={setMessage}
-            busy={busyAll}
+            busy={sending}
             textareaRef={textareaRef}
             wrapSelection={(wrapper) =>
               formatSelection({ before: wrapper, after: wrapper })
@@ -390,10 +294,6 @@ const App: React.FC = () => {
           selectedUsers={selectedUsers}
           message={message}
           attachmentsDir={attachmentsDir}
-        />
-        <UserListHelpModal
-          open={userListHelpOpen}
-          onClose={() => setUserListHelpOpen(false)}
         />
         <LoadingOverlay
           show={sending || busyAll}

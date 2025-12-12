@@ -7,8 +7,8 @@ exports.reloadUsersFromCsv = reloadUsersFromCsv;
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const app_root_1 = require("../app-root");
-const slack_users_1 = require("./slack-users");
 const logger_1 = require("./logger");
+const slack_users_1 = require("./slack-users");
 function reloadUsersFromCsv() {
     const csvPath = node_path_1.default.join(app_root_1.appRoot, "slack_users.csv");
     if (!node_fs_1.default.existsSync(csvPath)) {

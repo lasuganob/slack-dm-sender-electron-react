@@ -5,8 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.config = void 0;
 exports.loadConfig = loadConfig;
-const node_fs_1 = __importDefault(require("node:fs"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const node_fs_1 = __importDefault(require("node:fs"));
 const app_root_1 = require("./app-root");
 dotenv_1.default.config();
 function loadConfig() {

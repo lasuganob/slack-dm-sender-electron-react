@@ -3,7 +3,7 @@ import { SlackUser } from '../src/global';
 
 contextBridge.exposeInMainWorld('api', {
   getUsers: () => ipcRenderer.invoke('get-users'),
-  syncUsers: (manual = false) => ipcRenderer.invoke('sync-users', manual),
+  syncUsers: () => ipcRenderer.invoke('sync-users'),
   sendDms: (userIds: string[], text: string, attachmentsDir: null) =>
     ipcRenderer.invoke('send-dms', { userIds, text, attachmentsDir }),
   getLogPath: () => ipcRenderer.invoke('get-log-path'),

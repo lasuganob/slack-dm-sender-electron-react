@@ -1,14 +1,13 @@
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 
 import { appRoot } from "../app-root";
-import {
-  syncUsersThrottled,
-  hydrateCachedUsersFromCsv,
-  syncUsersCore,
-} from "./slack-users";
-import { logEvent, getLogFilePath } from "./logger";
 import { SlackUser } from "../type";
+import { getLogFilePath, logEvent } from "./logger";
+import {
+  hydrateCachedUsersFromCsv,
+  syncUsersThrottled,
+} from "./slack-users";
 
 type SyncUsersSuccessResponse = {
   ok: true;
@@ -31,10 +30,9 @@ export type SyncUsersResponse =
   | SyncUsersSuccessResponse
   | SyncUsersErrorResponse;
 
-export async function handleSyncUsers(manual?: boolean): Promise<SyncUsersResponse> {
-  console.log("handleSyncUsers called with manual =", manual);
+export async function handleSyncUsers(): Promise<SyncUsersResponse> {
   try {
-    const { users, csvPath } = manual ? await syncUsersCore() : await syncUsersThrottled();
+    const { users, csvPath } = await syncUsersThrottled();
     return {
       ok: true as const,
       users,

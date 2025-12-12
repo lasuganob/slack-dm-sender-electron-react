@@ -4,9 +4,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.openCsv = openCsv;
-const node_path_1 = __importDefault(require("node:path"));
-const node_fs_1 = __importDefault(require("node:fs"));
 const electron_1 = require("electron");
+const node_fs_1 = __importDefault(require("node:fs"));
+const node_path_1 = __importDefault(require("node:path"));
 const app_root_1 = require("../app-root");
 const logger_1 = require("./logger");
 async function openCsv() {

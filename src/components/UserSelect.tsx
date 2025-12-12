@@ -1,5 +1,5 @@
-import React from "react";
 import { MultiSelect } from "@mantine/core";
+import React from "react";
 import type { SlackUser } from "../global";
 
 interface UserSelectProps {

@@ -1,11 +1,11 @@
-import React, { type RefObject } from "react";
 import {
+  ActionIcon,
   Group,
   Textarea,
   Tooltip,
-  ActionIcon,
 } from "@mantine/core";
 import { IconBold, IconCode, IconItalic, IconStrikethrough } from "@tabler/icons-react";
+import React, { type RefObject } from "react";
 
 interface MessageEditorProps {
   message: string;

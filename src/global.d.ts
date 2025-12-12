@@ -34,7 +34,7 @@ declare global {
   interface Window {
     api: {
       getUsers: () => Promise<SlackUser[]>;
-      syncUsers: (manual?: boolean) => Promise<SyncUsersResult>;
+      syncUsers: () => Promise<SyncUsersResult>;
       sendDms: (
         userIds: string[],
         text: string,
