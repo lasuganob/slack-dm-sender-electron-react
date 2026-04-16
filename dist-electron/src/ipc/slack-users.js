@@ -28,7 +28,6 @@ function getCachedUsers() {
 async function fetchUsersFromSlack() {
     const users = [];
     let cursor;
-    const sendOnlyToWfhIspUsers = config_1.config.sendOnlyToWfhIspUsers || false;
     do {
         const res = await slack_client_1.slack.users.list({ cursor, limit: 200 });
         if (res.members) {
@@ -38,11 +37,13 @@ async function fetchUsersFromSlack() {
                 const profile = m.profile ?? {};
                 const slackName = profile.display_name || profile.real_name || m.name || "";
                 const slackNameLower = slackName.toLowerCase();
-                const hasWfhOrIsp = /\bWFH\b/i.test(slackNameLower) || /\bISP\b/i.test(slackNameLower);
+                const keywords = config_1.config.keywords || ["WFH", "ISP"];
+                const hasKeyword = keywords.some((kw) => {
+                    const regex = new RegExp(`\\b${kw}\\b`, "i");
+                    return regex.test(slackNameLower);
+                });
                 const exceptionIds = config_1.config.exceptionUserIds || [];
-                if (!hasWfhOrIsp &&
-                    sendOnlyToWfhIspUsers &&
-                    !exceptionIds.includes(m.id)) {
+                if (!hasKeyword && !exceptionIds.includes(m.id)) {
                     continue;
                 }
                 users.push({

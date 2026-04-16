@@ -14,16 +14,22 @@ export function loadConfig(): AppConfig {
     }
     return {
       slackBotToken: parsed.slackBotToken,
-      sendOnlyToWfhIspUsers: parsed.sendOnlyToWfhIspUsers,
       exceptionUserIds: parsed.exceptionUserIds,
+      keywords: parsed.keywords || ["WFH", "ISP"],
     };
   } catch (err: unknown) {
     const fromEnv = process.env.SLACK_BOT_TOKEN;
-    const onlySendToWfhIspUsers = process.env.ONLY_SEND_TO_WFH_ISP === "true";
+    
     const exceptionUserIdsEnv = process.env.EXCEPTION_USER_IDS;
     const exceptionUserIds = exceptionUserIdsEnv
       ? exceptionUserIdsEnv.split(",").map((id) => id.trim())
       : [];
+
+    const keywordsEnv = process.env.KEYWORDS;
+    const keywords = keywordsEnv
+      ? keywordsEnv.split(",").map((k) => k.trim())
+      : ["WFH", "ISP"];
+
     if (!fromEnv) {
       throw new Error(
         `Failed to load config.json at ${configPath} and SLACK_BOT_TOKEN env is not set. 
@@ -32,8 +38,8 @@ export function loadConfig(): AppConfig {
     }
     return {
       slackBotToken: fromEnv,
-      sendOnlyToWfhIspUsers: onlySendToWfhIspUsers,
       exceptionUserIds: exceptionUserIds,
+      keywords: keywords,
     };
   }
 }

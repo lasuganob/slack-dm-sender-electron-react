@@ -8,6 +8,6 @@ export type SlackUser = {
 
 export type AppConfig = {
   slackBotToken: string;
-  sendOnlyToWfhIspUsers?: boolean;
   exceptionUserIds?: string[];
+  keywords?: string[];
 };

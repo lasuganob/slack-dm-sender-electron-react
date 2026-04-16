@@ -36,7 +36,6 @@ export function getCachedUsers(): SlackUser[] {
 async function fetchUsersFromSlack(): Promise<SlackUser[]> {
   const users: SlackUser[] = [];
   let cursor: string | undefined;
-  const sendOnlyToWfhIspUsers = config.sendOnlyToWfhIspUsers || false;
 
   do {
     const res = await slack.users.list({ cursor, limit: 200 });
@@ -46,18 +45,18 @@ async function fetchUsersFromSlack(): Promise<SlackUser[]> {
         if (!m || m.deleted || m.is_bot || m.id === "USLACKBOT") continue;
 
         const profile = m.profile ?? {};
-        const slackName = profile.display_name || profile.real_name || m.name || "";
+        const slackName =
+          profile.display_name || profile.real_name || m.name || "";
 
         const slackNameLower = slackName.toLowerCase();
-        const hasWfhOrIsp =
-          /\bWFH\b/i.test(slackNameLower) || /\bISP\b/i.test(slackNameLower);
+        const keywords = config.keywords || ["WFH", "ISP"];
+        const hasKeyword = keywords.some((kw) => {
+          const regex = new RegExp(`\\b${kw}\\b`, "i");
+          return regex.test(slackNameLower);
+        });
 
         const exceptionIds = config.exceptionUserIds || [];
-        if (
-          !hasWfhOrIsp &&
-          sendOnlyToWfhIspUsers &&
-          !exceptionIds.includes(m.id!)
-        ) {
+        if (!hasKeyword && !exceptionIds.includes(m.id!)) {
           continue;
         }
 
